@@ -99,8 +99,8 @@ byte getScreen()
         if(rainTotal > 0) // if there is rain show it. else ignore it
           return currentScreenDisplaying;
         break;
-      case 4:
-        if(snowTotal > 0) // if there is rain show it. else ignore it
+      case 4: // snow
+        if(snowTotal > 0) // if there is snow show it. else ignore it
           return currentScreenDisplaying;
         break;
       default:
