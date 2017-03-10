@@ -1,38 +1,60 @@
+/* 
+ *  Weather wemos
+ *  
+ *  Gets the weather info from openweathermap by sending a get request.
+ *  Parses the response and stores all usefuil info into variables.
+ *  This is done by taking into acount 3 forecasts of the next 3 hour timespans.
+ *  Calculates the info to show to the LCD display.
+ *  The display swaps screens and loops to show the info.
+ *  
+ *  The circuit:
+ *  * A Liquid Crystal Dislay similar to the one referenced here https://www.arduino.cc/en/Tutorial/LiquidCrystalDisplay
+ *  * I used a Wemos D1 R2 as a board with the ESP-8266EX microcotroller, 
+ *    but the code will probably the code will work with anything having a WiFi module. ( https://www.wemos.cc/product/d1.html )
+ *  
+ *  Author: Konstantinos Egkarchos
+ *  Created at 10/03/2017
+ *  Project home: https://bitbucket.org/konsnos/arduino_wifi_weather
+ */
 #include <LiquidCrystal.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 
 // initialize the library with the numbers of the interface pins
 LiquidCrystal lcd(D7, D6, D4, D3, D2, D1);
-const int contrastPin = D5;
+const byte contrastPin = D5;
 
-const int screenDelay = 3000;
+const short screenDelay = 3000;
 
-/**** Weather variables according to openweatherdata ( http://openweathermap.org/forecast5 ) ****/
-const int arrayLength = 3;
-int tmpsMin[arrayLength];
-int tmpsMax[arrayLength];
-String descriptions[arrayLength];
-float wndSpds[arrayLength];
-float rainmm[arrayLength];
-float snowmm[arrayLength];
+/**** Weather variables according to openweathermap ( http://openweathermap.org/forecast5 ) ****/
+// if samplesLength changes, also change the cnt variable in the request.
+const byte samplesLength = 3;
+short tmpsMin[samplesLength];
+short tmpsMax[samplesLength];
+char descriptions[samplesLength][17];
+float wndSpds[samplesLength];
+float rainmm[samplesLength];
+float snowmm[samplesLength];
 
-int tmpMin;
-int tmpMax;
+short tmpMin;
+short tmpMax;
 float wndSpd;
 float rainTotal;
 float snowTotal;
 /**** END WEATHER VARIABLES ****/
 
 /**** WIFI VARIABLES ********/
-const char* WIFI_SSID     = "";
+const char* WIFI_SSID = "";
 const char* WIFI_PSWD = "";
 
-const char* weatherForecastURL = "";
+// A sample openweathermap.org request url
+// It is useful to add the cnt=3 variable to the url to make the string returned, shorter.
+// Remember to change the cnt variable according to the variable samplesLength.
+const char* weatherForecastURL = "http://samples.openweathermap.org/data/2.5/forecast?lat=35&lon=139&appid=b1b15e88fa797225412429c1c50c122a1";
 /***** END WIFI VARIABLES ******/
 
-int screenCount;
-int currentScreenDisplaying;
+byte screenCount;
+byte currentScreenDisplaying;
 
 void setup() 
 {
@@ -40,14 +62,12 @@ void setup()
   Serial.begin(9600);
 
   setupLCD();
-  setupWiFi(WIFI_SSID, WIFI_PSWD);
+  setupWiFi();
   requestWeather(weatherForecastURL);
 
   calculateWeather();
   
   currentScreenDisplaying = -1; // -1 to show 0 first
-  
-  Serial.println("setup done");
 }
 
 void loop() 
@@ -57,7 +77,7 @@ void loop()
   delay(screenDelay);
 }
 
-int getScreen()
+byte getScreen()
 {
   for(;;) // infinite loop until a screen is found
   {
@@ -84,16 +104,16 @@ int getScreen()
           return currentScreenDisplaying;
         break;
       default:
-        Serial.println("Unregistered screen display: " + (String)currentScreenDisplaying);
+        Serial.println("current Screen Displaying error");
         return 0;
     }
   }
 }
 
-const int descriptionsInitialScreen = 5;
-void showScreen(int currentScreen)
+const byte descriptionsInitialScreen = 5;
+void showScreen(byte currentScreen)
 {
-  Serial.println("Display: " + (String)currentScreen);
+  //Serial.println("Display: " + (String)currentScreen);
   
   switch(currentScreen)
   {
@@ -118,7 +138,7 @@ void showScreen(int currentScreen)
       showDescription(currentScreen);
       break;
     default:
-      Serial.println("Unregistered screen display: " + (String)currentScreen);
+      Serial.println("currentScreen error");
       break;
   }
 }
@@ -175,44 +195,36 @@ void showDescription(int currentScreen)
 /// Calculates screens for the display.
 void calculateWeather()
 {
-  Serial.println("Calculating weather");
-  
   // calculate minimum temperature
   tmpMin = tmpsMin[0];
-  for(int i = 1;i<(sizeof(tmpsMin)/sizeof(int));i++)
+  for(byte i = 1;i<samplesLength;i++)
   {
     if(tmpsMin[i] < tmpMin)
       tmpMin = tmpsMin[i];
   }
   tmpMin = floor(tmpMin);
 
-  Serial.println("Calculated min temperature");
-
   // calculate maximum temperature
   tmpMax = tmpsMax[0];
-  for(int i = 1;i<(sizeof(tmpsMax)/sizeof(int));i++)
+  for(byte i = 1;i<samplesLength;i++)
   {
     if(tmpsMax[i] > tmpMax)
       tmpMax = tmpsMax[i];
   }
   tmpMax = ceil(tmpMax);
 
-  Serial.println("Calculated max temperature");
-
   // find fastest wind
   wndSpd = wndSpds[0];
-  for (int i = 1;i<(sizeof(wndSpds)/sizeof(float));i++)
+  for (byte i = 1;i<samplesLength;i++)
   {
     if(wndSpds[i] > wndSpd)
       wndSpd = wndSpds[i];
   }
 
-  Serial.println("Calculated wind speed");
-
   // find total rain
   // if totalRain equals to 0 it will be ignored
   rainTotal = rainmm[0];
-  for(int i = 1;i<(sizeof(rainmm)/sizeof(float));i++)
+  for(byte i = 1;i<samplesLength;i++)
   {
     rainTotal += rainmm[i];
   }
@@ -220,53 +232,46 @@ void calculateWeather()
   // find total snow
   // if totalSnow equals to 0 it will be ignored
   snowTotal = snowmm[0];
-  for(int i = 1;i<(sizeof(snowmm)/sizeof(float));i++)
+  for(byte i = 1;i<samplesLength;i++)
   {
     snowTotal += snowmm[i];
   }
 
   screenCount = 5;
   // remove duplicate descriptions
-  int count = arrayLength;
-  int offset = 0;
-  for(int i = 0;i<count;i++)
+  byte offset = 0;
+  for(byte i = 0;i<samplesLength;i++)
   {
     if(offset > 0)
     {
-      descriptions[i-offset] = descriptions[i];
+      strcpy(descriptions[i-offset], descriptions[i]);
     }
 
-    if(descriptions[i] == "")
+    if(descriptions[i][0] == (char)0)
     {
       offset++;
       continue;
     }
     
-    for(int j = i + 1;j<count;j++)
+    for(byte j = i + 1;j<samplesLength;j++)
     {
-      if(descriptions[j] != "" && descriptions[i] == descriptions[j])
+      if(descriptions[j][0] != (char)0 && strcmp(descriptions[i], descriptions[j]) == 0)
       {
-        descriptions[j] = "";
+        descriptions[j][0] = (char)0;
       }
     }
   }
-  screenCount += (count - offset);
-
-  Serial.println("Calculated descriptions");
+  screenCount += (samplesLength - offset);
 }
 
 void requestWeather(const char* requestURL)
 {
   if(WiFi.status() == WL_CONNECTED)
   {
-    // debug
-    Serial.print("Requesting ");
-    Serial.println(requestURL);
-    
     HTTPClient http;
 
     http.begin(requestURL);
-    int httpCode = http.GET();
+    short httpCode = http.GET();
 
     if(httpCode > 0)
     {
@@ -274,7 +279,7 @@ void requestWeather(const char* requestURL)
     }
     else
     {
-      Serial.println((String)"Request returned code: "+ httpCode);
+      Serial.println("request error");
       lcd.clear();
       lcd.print((String)"Error: " + httpCode);
       delay(100000);
@@ -283,13 +288,13 @@ void requestWeather(const char* requestURL)
   }
 }
 
-void setupWiFi(const char* ssid, const char* password)
+void setupWiFi()
 {
   /* Explicitly set the ESP8266 to be a WiFi-client, otherwise, it by default,
    would try to act as both a client and an access-point and could cause
    network-issues with your other WiFi-devices on your WiFi-network. */
   WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
+  WiFi.begin(WIFI_SSID, WIFI_PSWD);
   lcd.clear();
   lcd.print("Connecting");
   lcd.setCursor(0, 1);
@@ -298,12 +303,6 @@ void setupWiFi(const char* ssid, const char* password)
     delay(500);
     lcd.print(".");
   }
-
-  // debug
-  Serial.println("");
-  Serial.println("WiFi connected");  
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
 }
 
 void storeWeather(String weatherResponse, int index, int strStart, int strEnd)
@@ -316,8 +315,10 @@ void storeWeather(String weatherResponse, int index, int strStart, int strEnd)
   {
     nextComma = weatherResponse.indexOf(",", tmpMinIndex);
     tmpsMin[index] = floor(weatherResponse.substring(tmpMinIndex+10, nextComma).toFloat());
-
-    Serial.println((String)"Test tmpsMin: "+ tmpsMin[index]);
+  }
+  else
+  {
+    Serial.println("min tmp error");
   }
 
   // get max temperature
@@ -326,8 +327,10 @@ void storeWeather(String weatherResponse, int index, int strStart, int strEnd)
   {
     nextComma = weatherResponse.indexOf(",", tmpMaxIndex);
     tmpsMax[index] = ceil(weatherResponse.substring(tmpMaxIndex+10, nextComma).toFloat());
-
-    Serial.println((String)"Test tmpsMax: "+ tmpsMax[index]);
+  }
+  else
+  {
+    Serial.println("max tmp error");
   }
 
   // get descriptions
@@ -335,13 +338,11 @@ void storeWeather(String weatherResponse, int index, int strStart, int strEnd)
   if(tmpDescription > 0 && tmpDescription < strEnd)
   {
     nextComma = weatherResponse.indexOf(",", tmpDescription);
-    descriptions[index] = weatherResponse.substring(tmpDescription+14, nextComma-1);
-
-    Serial.println((String)"Test description: " + descriptions[index]);
+    strcpy(descriptions[index], weatherResponse.substring(tmpDescription+14, nextComma-1).c_str());
   }
   else
   {
-    Serial.println((String)"Description wasn't found " + tmpDescription);
+    Serial.println("description error");
   }
 
   // get wind speed
@@ -350,28 +351,21 @@ void storeWeather(String weatherResponse, int index, int strStart, int strEnd)
   {
     nextComma = weatherResponse.indexOf(",", tmpWndSpd);
     wndSpds[index] = weatherResponse.substring(tmpWndSpd+7, nextComma).toFloat();
-
-    Serial.println((String)"Test wind speed: " + wndSpds[index]);
   }
   else 
   {
-    Serial.println((String)"Wind speed wasn't found " + tmpWndSpd);
+    Serial.println("wind speed error");
   }
 
   // get rainmm
-  int tmpRainmm = weatherResponse.indexOf(',"rain":', strStart);
+  int tmpRainmm = weatherResponse.indexOf("rain\":", strStart);
   if(tmpRainmm > 0 && tmpRainmm < strEnd) // valid rain
   {
     int tmpRain3h = weatherResponse.indexOf("3h", tmpRainmm);
     if(tmpRain3h > -1 && tmpRain3h < strEnd)  // 3h must exist
     {
-      nextComma = weatherResponse.indexOf("}"); // value has object ending.
+      nextComma = weatherResponse.indexOf("}", tmpRain3h); // value has object ending.
       rainmm[index] = weatherResponse.substring(tmpRain3h+4, nextComma).toFloat();
-
-      Serial.println((String)"Rainmm index: " + tmpRainmm);
-      Serial.println((String)"Rainmm 3h index: " + tmpRain3h);
-      Serial.println("Test rain string: " + weatherResponse.substring(tmpRain3h+4, nextComma));
-      Serial.println((String)"Test rainmm: " + rainmm[index]);
     }
     else
     {
@@ -384,51 +378,45 @@ void storeWeather(String weatherResponse, int index, int strStart, int strEnd)
   }
 
   // get snowmm
-  /*int tmpSnowmm = weatherResponse.indexOf("snow", strStart);
+  int tmpSnowmm = weatherResponse.indexOf("snow\":", strStart);
   if(tmpSnowmm > 0 && tmpSnowmm < strEnd) // valid rain
   {
     int tmpSnow3h = weatherResponse.indexOf("3h", tmpSnowmm);
-    nextComma = weatherResponse.indexOf("}"); // value has object ending.
-    snowmm[index] = weatherResponse.substring(tmpSnow3h+4, nextComma).toFloat();
-
-    Serial.println((String)"Test snowmm: " + snowmm[index]);
+    if(tmpSnow3h > -1 && tmpSnow3h < strEnd)  // 3h must exist
+    {
+      nextComma = weatherResponse.indexOf("}", tmpSnow3h); // value has object ending.
+      snowmm[index] = weatherResponse.substring(tmpSnow3h+4, nextComma).toFloat();
+    }
+    else
+    {
+      snowmm[index] = 0;
+    }
   }
   else
   {
     snowmm[index] = 0;
-  }*/
+  }
 }
 
 void setupWeather(String weatherResponse)
 {
-  Serial.println("Setting up weather");
-
   // FIRST VALUES
   char* indexWord = "temp_min";
-  int indexWordLength = sizeof(indexWord);
+  byte indexWordLength = sizeof(indexWord);
+  int index1;
+  int index2;
   
-  int index1 = weatherResponse.indexOf(indexWord);
-  int index2 = weatherResponse.indexOf(indexWord, index1 + indexWordLength);
-
+  index1 = weatherResponse.indexOf(indexWord);
+  index2 = weatherResponse.indexOf(indexWord, index1 + indexWordLength);
   storeWeather(weatherResponse, 0, index1, index2);
-  
-  tmpsMin[1] = 10;
-  tmpsMin[2] = 13;
-  
-  tmpsMax[1] = 13;
-  tmpsMax[2] = 16;
-  
-  descriptions[1] = "scattered clouds";
-  descriptions[2] = "clear sky";
-  
-  wndSpds[1] = 7.41;
-  wndSpds[2] = 3.5;
-
-  rainmm[1] = 0.37;
-  rainmm[2] = 0.00;
-
-  snowmm[1] = 0.02;
-  snowmm[2] = 0.05;
+  // 2nd parse
+  index1 = index2;
+  index2 = weatherResponse.indexOf(indexWord, index1 + indexWordLength);
+  storeWeather(weatherResponse, 1, index1, index2);
+  // 3rd parse
+  index1 = index2;
+  index2 = weatherResponse.length();
+  storeWeather(weatherResponse, 2, index1, index2);
 }
 
 void setupLCD()
@@ -441,4 +429,3 @@ void setupLCD()
   // Print a message to the LCD.
   lcd.print("Initializing!");
 }
-
