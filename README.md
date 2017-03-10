@@ -13,6 +13,8 @@ The circuit:
 * I used a Wemos D1 R2 as a board with the ESP-8266EX microcotroller, 
   but the code will probably the code will work with anything having a WiFi module. ( https://www.wemos.cc/product/d1.html )
 
+Video showcase: https://youtu.be/3M31VxNbEMs
+
 Author: Konstantinos Egkarchos
 
 Created at 10/03/2017
