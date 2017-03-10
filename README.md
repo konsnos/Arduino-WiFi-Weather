@@ -7,10 +7,14 @@ Calculates the info to show to the LCD display.
 The display swaps screens and loops to show the info.
 
 The circuit:
+
 * A Liquid Crystal Dislay similar to the one referenced here https://www.arduino.cc/en/Tutorial/LiquidCrystalDisplay
+
 * I used a Wemos D1 R2 as a board with the ESP-8266EX microcotroller, 
   but the code will probably the code will work with anything having a WiFi module. ( https://www.wemos.cc/product/d1.html )
 
 Author: Konstantinos Egkarchos
+
 Created at 10/03/2017
+
 Project home: https://bitbucket.org/konsnos/arduino_wifi_weather
