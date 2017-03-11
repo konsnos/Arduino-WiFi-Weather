@@ -11,7 +11,7 @@ The circuit:
 * A Liquid Crystal Dislay similar to the one referenced here https://www.arduino.cc/en/Tutorial/LiquidCrystalDisplay
 
 * I used a Wemos D1 R2 as a board with the ESP-8266EX microcotroller, 
-  but the code will probably the code will work with anything having a WiFi module. ( https://www.wemos.cc/product/d1.html )
+  but the code will probably work with anything having a WiFi module. ( https://www.wemos.cc/product/d1.html )
 
 Video showcase: https://youtu.be/3M31VxNbEMs
 
