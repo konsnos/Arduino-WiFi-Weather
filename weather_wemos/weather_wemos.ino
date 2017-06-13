@@ -19,12 +19,16 @@
 #include <LiquidCrystal.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
+#include <ESP8266WebServer.h>
+#include <EEPROM.h>
 
 // initialize the library with the numbers of the interface pins
 LiquidCrystal lcd(D7, D6, D4, D3, D2, D1);
 const byte contrastPin = D5;
 
 const short screenDelay = 3000;
+
+const int EEPROM_SIZE = 512;
 
 /**** Weather variables according to openweathermap ( http://openweathermap.org/forecast5 ) ****/
 // if samplesLength changes, also change the cnt variable in the request.
@@ -43,27 +47,37 @@ float rainTotal;
 float snowTotal;
 /**** END WEATHER VARIABLES ****/
 
-/**** WIFI VARIABLES ********/
-const char* WIFI_SSID = "";
-const char* WIFI_PSWD = "";
+ESP8266WebServer server(80);
+boolean serverInitialised;
+// True when connectted to wifi. If false then it's only server.
+boolean connectedToWiFi;
+const char* WIFI_SERVER_NAME = "Weather_For";
+boolean showingServerScreen;
 
 // A sample openweathermap.org request url
 // It is useful to add the cnt=3 variable to the url to make the string returned, shorter.
 // Remember to change the cnt variable according to the variable samplesLength.
-const char* weatherForecastURL = "http://samples.openweathermap.org/data/2.5/forecast?lat=35&lon=139&appid=b1b15e88fa797225412429c1c50c122a1";
+const char* weatherForecastURL = "http://api.openweathermap.org/data/2.5/forecast?lat=";//37.9550923&lon=23.697829&units=metric&cnt=3&appid=168d1d270ae7f2f2bef312905691075a";
+const char* weatherForLon = "&lon=";
+const char* weatherForAppId = "&units=metric&cnt=3&appid=";
 /***** END WIFI VARIABLES ******/
 
 byte screenCount;
 byte currentScreenDisplaying;
 
-void setup() 
+void setup()
 {
   // debug
+  connectedToWiFi = false;
+  serverInitialised = false;
+  showingServerScreen = false;
   Serial.begin(9600);
+
+  EEPROM.begin(EEPROM_SIZE);
 
   setupLCD();
   setupWiFi();
-  requestWeather(weatherForecastURL);
+  requestWeather();
 
   calculateWeather();
   
@@ -72,9 +86,24 @@ void setup()
 
 void loop() 
 {
-  showScreen(getScreen());
+  // handles both access point and client servers.
+  server.handleClient();
+  
+  if(connectedToWiFi)
+  {
+    showingServerScreen = false;
     
-  delay(screenDelay);
+    showScreen(getScreen());
+    
+    delay(screenDelay);
+  }
+  else
+  {
+    if(!showingServerScreen)
+      showServerScreen();
+    
+    showingServerScreen = true;
+  }
 }
 
 byte getScreen()
@@ -99,8 +128,8 @@ byte getScreen()
         if(rainTotal > 0) // if there is rain show it. else ignore it
           return currentScreenDisplaying;
         break;
-      case 4: // snow
-        if(snowTotal > 0) // if there is snow show it. else ignore it
+      case 4:
+        if(snowTotal > 0) // if there is rain show it. else ignore it
           return currentScreenDisplaying;
         break;
       default:
@@ -141,6 +170,15 @@ void showScreen(byte currentScreen)
       Serial.println("currentScreen error");
       break;
   }
+}
+
+/// Prints server name and IP
+void showServerScreen()
+{
+  lcd.clear();
+  lcd.print(WIFI_SERVER_NAME);
+  lcd.setCursor(0, 1);
+  lcd.print(WiFi.softAPIP());
 }
 
 void showTitle()
@@ -264,12 +302,22 @@ void calculateWeather()
   screenCount += (samplesLength - offset);
 }
 
-void requestWeather(const char* requestURL)
+void requestWeather()
 {
   if(WiFi.status() == WL_CONNECTED)
   {
     HTTPClient http;
 
+    // create the request url
+    int addr = 0;
+    readCharFromEEPROM(&addr);
+    readCharFromEEPROM(&addr);
+    char * latitude = readCharFromEEPROM(&addr);
+    char * longitude = readCharFromEEPROM(&addr);
+    char * apiKey = readCharFromEEPROM(&addr);
+
+    String requestURL = (String)weatherForecastURL + latitude + weatherForLon + longitude + weatherForAppId + apiKey;
+    
     http.begin(requestURL);
     short httpCode = http.GET();
 
@@ -290,6 +338,13 @@ void requestWeather(const char* requestURL)
 
 void setupWiFi()
 {
+  Serial.println("wifi");
+  
+  showingServerScreen = false;
+  int addr = 0;
+  char * WIFI_SSID = readCharFromEEPROM(&addr);
+  char * WIFI_PSWD = readCharFromEEPROM(&addr);
+
   /* Explicitly set the ESP8266 to be a WiFi-client, otherwise, it by default,
    would try to act as both a client and an access-point and could cause
    network-issues with your other WiFi-devices on your WiFi-network. */
@@ -299,9 +354,42 @@ void setupWiFi()
   lcd.print("Connecting");
   lcd.setCursor(0, 1);
 
-  while (WiFi.status() != WL_CONNECTED) {
+  byte countDelays = 0;
+  while (WiFi.status() != WL_CONNECTED && countDelays < 10)  // wait for 5 seconds
+  {
+    countDelays++;
     delay(500);
     lcd.print(".");
+  }
+
+  free(WIFI_SSID);
+  free(WIFI_PSWD);
+
+  if(WiFi.status() != WL_CONNECTED)
+  {
+    // initiate server
+    WiFi.softAP(WIFI_SERVER_NAME);
+    Serial.println("");
+    Serial.print("Server addr: ");
+    Serial.println(WiFi.softAPIP());
+    connectedToWiFi = false;
+  }
+  else
+  {
+    Serial.println("");
+    Serial.print("Local addr: ");
+    Serial.println(WiFi.localIP());
+    connectedToWiFi = true;
+  }
+
+  if(!serverInitialised)
+  {
+    Serial.println("initialising server");
+    server.on("/", handleRoot);
+    server.on("/saveData", handleData);
+    server.onNotFound(handleNotFound);
+    server.begin();
+    serverInitialised = true;
   }
 }
 
@@ -401,7 +489,7 @@ void storeWeather(String weatherResponse, int index, int strStart, int strEnd)
 void setupWeather(String weatherResponse)
 {
   // FIRST VALUES
-  char* indexWord = "temp_min";
+  const char* indexWord = "temp_min";
   byte indexWordLength = sizeof(indexWord);
   int index1;
   int index2;
@@ -429,3 +517,91 @@ void setupLCD()
   // Print a message to the LCD.
   lcd.print("Initializing!");
 }
+
+// FUNCTIONS FOR SERVER
+//root page can be accessed only if authentification is ok
+void handleRoot()
+{
+  String msg = "Pass Credentials";
+  String content = "<html><body><form action='/saveData' method='POST'>Provide credentials:<br>";
+  content += "WiFi SSID:<input type='text' name='user' placeholder='user name'><br>";
+  content += "WiFi Password:<input type='password' name='pass' placeholder='password'><br>";
+  content += "Latitude:<input type='text' name='lat' placeholder='38.002047'><br>";
+  content += "Longitude:<input type='text' name='longi' placeholder='23.723602'><br>";
+  content += "Open WeatherMap API key:<input type='text' name='apiKey' placeholder='a651sdf65asd1f6a5sd1fg65df'><br>";
+  content += "<input type='submit' name='SUBMIT' value='Submit'></form>" + msg + "<br>";
+  server.send(200, "text/html", content);
+}
+
+/// Stores wifi username and password, latitude, longitude, and api key for openweathermap.
+void handleData()
+{
+  if(server.hasArg("user") && server.hasArg("pass") && server.hasArg("lat") && server.hasArg("longi") && server.hasArg("apiKey"))
+  {
+    char* str;
+    int addr = 0;
+    
+    server.arg("user").toCharArray(str, 40);
+    writeToEEPROM(&addr, str);
+    EEPROM.write(addr++, 0); // user written
+
+    server.arg("pass").toCharArray(str, 40);
+    writeToEEPROM(&addr, str);
+    EEPROM.write(addr++, 0); // pass written
+
+    server.arg("lat").toCharArray(str, 40);
+    writeToEEPROM(&addr, str);
+    EEPROM.write(addr++, 0); // pass latitude
+
+    server.arg("longi").toCharArray(str, 40);
+    writeToEEPROM(&addr, str);
+    EEPROM.write(addr++, 0); // pass longitude
+    
+    server.arg("apiKey").toCharArray(str, 40);
+    writeToEEPROM(&addr, str);
+    EEPROM.write(addr++, 0); // pass longitude
+
+    EEPROM.commit();
+
+    setupWiFi();
+  }
+}
+
+void handleNotFound()
+{
+  String message = "<html><body><H2>Page Not Found</H2><br><br>";
+  message += "Back to <a href='/'>root</a>.<br><br></body></html>";
+  server.send(404, "text/html", message);
+}
+// END FUNCTIONS FOR SERVER
+
+// EEPROM FUNCTIONS
+
+
+// writes variable to the permanent memory of the EEPROM
+void writeToEEPROM(int * addr, char* str)
+{
+  for(byte i = 0;i<strlen(str);i++)
+  {
+    EEPROM.write((*addr)++, str[i]);
+  }
+}
+
+// reads value until it finds 0 or 255 as value
+char* readCharFromEEPROM(int * addr)
+{
+  char * str = (char *) malloc(40);
+  byte i = 0;
+  for (;i<40 && (*addr) < EEPROM_SIZE;i++)
+  {
+    byte value = EEPROM.read((*addr)++);
+    if(value == 0 || value == 255)
+      break;
+
+    str[i] = char(value);
+  }
+  str[i] = 0;
+  
+  return str;
+}
+// END EEPROM FUNCTIONS
