@@ -57,7 +57,7 @@ boolean showingServerScreen;
 // A sample openweathermap.org request url
 // It is useful to add the cnt=3 variable to the url to make the string returned, shorter.
 // Remember to change the cnt variable according to the variable samplesLength.
-const char* weatherForecastURL = "http://api.openweathermap.org/data/2.5/forecast?lat=";//37.9550923&lon=23.697829&units=metric&cnt=3&appid=168d1d270ae7f2f2bef312905691075a";
+const char* weatherForecastURL = "http://api.openweathermap.org/data/2.5/forecast?lat=";
 const char* weatherForLon = "&lon=";
 const char* weatherForAppId = "&units=metric&cnt=3&appid=";
 /***** END WIFI VARIABLES ******/
